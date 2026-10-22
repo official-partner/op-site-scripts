@@ -2,5 +2,6 @@
   "name": "op-site-scripts",
   "compatibility_date": "2026-10-01",
   "assets": { "directory": "." },
-  "preview_urls": true
+  "preview_urls": true,
+  "previews": {}
 }

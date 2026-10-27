@@ -1,4 +1,4 @@
-console.log("[sparky.js] build 2026-10-27a");
+console.log("[sparky.js] build 2026-10-27b");
 /* ═══════════════════════════════════════════════
    SETUP
 ═══════════════════════════════════════════════ */
@@ -2419,12 +2419,22 @@ function initQuoteForm() {
     if (!services.length || !sets.length) return;
 
     const controls = (set) => set.querySelectorAll("input, select, textarea");
+    // Webflow's own submit check reads `required` even on disabled fields
+    // ("Please fill out the required field…" alert), so a retired set
+    // must drop it too; it comes back when the set is armed.
     const retire = (set, clear) => {
-      controls(set).forEach((c) => { c.disabled = true; if (clear) c.checked = false; });
+      controls(set).forEach((c) => {
+        c.disabled = true;
+        if (c.required) { c.dataset.wasRequired = "true"; c.required = false; }
+        if (clear) c.checked = false;
+      });
       set.style.display = "none";
     };
     const arm = (set) => {
-      controls(set).forEach((c) => { c.disabled = false; });
+      controls(set).forEach((c) => {
+        c.disabled = false;
+        if (c.dataset.wasRequired) c.required = true;
+      });
       set.style.display = "flex";
     };
 

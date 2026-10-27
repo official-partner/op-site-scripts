@@ -1,4 +1,4 @@
-console.log("[sparky.js] build 2026-10-27b");
+console.log("[sparky.js] build 2026-10-27c");
 /* ═══════════════════════════════════════════════
    SETUP
 ═══════════════════════════════════════════════ */
@@ -111,9 +111,16 @@ function initBeforeEnterFunctions(next) {
 function initAfterEnterFunctions(data) {
   nextPage = data.next.container;
 
-  // Pass next.html so Webflow picks up the correct data-wf-page id
-  resetWebflow(data.next.html);
-  ensureWebflowForms(); // forms must be rebuilt for the new container
+  // First load: Webflow has just booted itself, so leave it alone.
+  // Re-running Webflow.ready() here loads Cloudflare Turnstile (the form
+  // spam check) a second time; the widgets then render twice or not at
+  // all, the token sent with the form is wrong, and Webflow answers 422.
+  // Only a real barba navigation needs Webflow re-initialised.
+  if (data.current?.container) {
+    // Pass next.html so Webflow picks up the correct data-wf-page id
+    resetWebflow(data.next.html);
+    ensureWebflowForms(); // forms must be rebuilt for the new container
+  }
   allpages(); // init all page components
 }
 
@@ -439,6 +446,10 @@ barba.init({
   timeout: 7000,
   preventRunning: true,
 
+  // Pages with a Webflow form always load for real, never through barba:
+  // the form's Turnstile check only boots cleanly on a full page load.
+  prevent: ({ href }) => isFullLoadPath(href),
+
   transitions: [{
     // Chosen automatically when the OLD page's footer is on screen at
     // navigation time (barba prefers transitions with matching custom
@@ -490,6 +501,19 @@ barba.init({
 /* ═══════════════════════════════════════════════
    GLOBAL HELPERS
 ═══════════════════════════════════════════════ */
+// Paths that hold a Webflow form (Turnstile). Add any new form page here.
+const FULL_LOAD_PATHS = ["/contact"];
+
+function isFullLoadPath(href) {
+  try {
+    const url = new URL(href, window.location.href);
+    if (url.origin !== window.location.origin) return false;
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    return FULL_LOAD_PATHS.includes(path);
+  } catch (_) {
+    return false;
+  }
+}
 function resetPage(container) {
   window.scrollTo({ top: 0, behavior: "instant" });
 

@@ -2918,7 +2918,8 @@ function initServiceCards(root) {
      in and out like the awards badge (awardsBadge recipe) and swaps to
      the hovered row's picture like the Services frame (servicesSwap
      recipe), the window taking each picture's format (portrait, square
-     or landscape: random for now, or data-format on the item). No
+     or landscape: the Inclusion's Image Format in the CMS, bound as
+     data-format on the row; empty or Auto follows the picture). No
      project cards trail it.
    — Hooks: [data-included-follow] on the list of .award-item rows, each
      with its .award-img-wrap picture (read for the frame, hidden while
@@ -3012,11 +3013,14 @@ function setupIncludedFollow(list, rows) {
     gsap.set(el, { visibility: 'hidden', opacity: 0 });
     const L = { el, inner: media, img: p.video ? null : media, video: p.video ? media : null, sizes: !p.video,
                 on: false, z: 0, mw: 0, mh: 0, tf: '', ar: 0, loaded: false, pic: p,
-                ratio: followFormat(p.item, 'included:' + p.src) };
+                fixed: followFormat(p.item, 'included:' + p.src),
+                get ratio() { return followRatio(this.fixed, this.ar); } };
     const onMeta = () => {
       const ar = L.img ? L.img.naturalWidth / L.img.naturalHeight : L.video.videoWidth / L.video.videoHeight;
       if (!(ar > 0) || !isFinite(ar)) return;
       L.ar = ar;
+      // Auto format: the window takes the picture's shape once it's known.
+      if (!L.fixed && sh.current === L) [sh.tw, sh.th] = followFit(L.ratio);
       sh.dirty = true;
       wake();
     };
@@ -4006,9 +4010,10 @@ function initVideos() {
      with their pictures ready. A card already out keeps its place and
      only crossfades; a project the next service shares stays on its
      card. The row keeps its length for the whole visit to the list.
-   — Every visual has a format: portrait 4:5, square or landscape 3:2.
-     Random for now (kept for the visit), or read from data-format on
-     its CMS item ("portrait", "square", "landscape" or "16:9").
+   — Every visual has a format: portrait 4:5, square or landscape 3:2,
+     set in the CMS (Services: Image Format, Works: Thumbnail Format),
+     bound as data-format on its list item. Empty or Auto: the format
+     closest to the picture's own shape, once it has loaded.
      The frame's window reshapes on a spring and the picture reframes
      to fill it, never stretched. At home the window stays locked to
      the top-right corner.
@@ -4073,16 +4078,33 @@ const followKey = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 const followFit = (r) => (r >= 1 ? [1, 1 / r] : [r, 1]); // window of ratio r in a unit square
 const followFormats = new Map();                           // visual → random format, kept for the visit
 
-// Format of a visual: data-format on its CMS item, else random.
-function followFormat(item, key) {
+// Format of a visual, from data-format on its CMS item (the CMS "format"
+// option fields): "Portrait 4:5", "Square", "Landscape", or a ratio like
+// "16:9". Empty or "Auto": 0, meaning the picture's own shape decides
+// (followRatio). random: true keeps the old behaviour, a random format
+// kept for the visit (carousel slides that aren't the Slide / Media component).
+function followFormat(item, key, random) {
   const host = item && (item.hasAttribute('data-format') ? item : item.querySelector('[data-format]'));
   const raw  = host ? followKey(host.getAttribute('data-format')) : '';
   const F    = SERVICES_FOLLOW.formats;
   if (F[raw]) return F[raw];
-  const m = raw.match(/^(\d*\.?\d+)\s*[:/x]\s*(\d*\.?\d+)$/);
+  if (/^(portrait|vertical|tall)\b/.test(raw)) return F.portrait;
+  if (/^square\b/.test(raw)) return F.square;
+  if (/^(landscape|horizontal|wide)\b/.test(raw)) return F.landscape;
+  const m = raw.match(/(\d*\.?\d+)\s*[:/x]\s*(\d*\.?\d+)/);
   if (m && +m[1] && +m[2]) return gsap.utils.clamp(0.5, 2, m[1] / m[2]);
+  if (!random) return 0;
   if (!followFormats.has(key)) followFormats.set(key, gsap.utils.random(Object.values(F)));
   return followFormats.get(key);
+}
+
+// The format a visual shows in: its CMS format, else the one of the three
+// closest to the picture's own shape (ar), else square until the picture is known.
+function followRatio(fixed, ar) {
+  if (fixed) return fixed;
+  if (!(ar > 0) || !isFinite(ar)) return SERVICES_FOLLOW.formats.square;
+  return Object.values(SERVICES_FOLLOW.formats)
+    .reduce((best, f) => (Math.abs(Math.log(f / ar)) < Math.abs(Math.log(best / ar)) ? f : best));
 }
 
 // Critically damped spring: the value chases its target and stays smooth when
@@ -4228,6 +4250,8 @@ function setupServicesFollow(root) {
     if (!(ar > 0) || !isFinite(ar) || Math.abs(ar - L.ar) < 1e-3) return;
     L.ar = ar;
     L.sh.dirty = true;
+    // Auto format: the window takes the picture's shape once it's known.
+    if (!L.fixed && L.sh.current === L) setFormat(L.sh, L.ratio);
     wake();
   };
 
@@ -4236,7 +4260,8 @@ function setupServicesFollow(root) {
                 failed: false,
                 img:   media && media.tagName === 'IMG' ? media : null,
                 video: media && media.tagName === 'VIDEO' ? media : null,
-                ratio: followFormat(item || el, key) };
+                fixed: followFormat(item || el, key),
+                get ratio() { return followRatio(this.fixed, this.ar); } };
     el.style.position = 'absolute';
     el.style.inset = '0 auto auto 0';
     el.style.transformOrigin = '50% 50%';
@@ -5059,7 +5084,8 @@ function initHoverTrail() {
     const src = img.classList.contains('w-dyn-bind-empty') ? '' : img.getAttribute('src') || '';
     if (!src || seen.has(src)) return;
     seen.add(src);
-    media.push({ src, srcset: img.getAttribute('srcset') || '', ratio: followFormat(img.closest('.w-dyn-item') || img, src),
+    media.push({ src, srcset: img.getAttribute('srcset') || '', fixed: followFormat(img.closest('.w-dyn-item') || img, src),
+                 get ratio() { return followRatio(this.fixed, this.pic && this.pic.naturalWidth / this.pic.naturalHeight); },
                  pic: null, ready: false, failed: false });
   });
   if (!words.length || !media.length) return;
@@ -5626,7 +5652,7 @@ function setupMarquee(el, undo) {
     const shown = wrap.querySelector('img:not(.w-condition-invisible), video:not(.w-condition-invisible)');
     const key = shown ? shown.getAttribute('src') || shown.getAttribute('data-source') : '';
     const imgs = Array.from(wrap.querySelectorAll('img[srcset]'));
-    return { wrap, imgs, sizes: imgs.map(img => img.getAttribute('sizes')), ratio: followFormat(s, 'marquee:' + (key || i)) };
+    return { wrap, imgs, sizes: imgs.map(img => img.getAttribute('sizes')), ratio: followFormat(s, 'marquee:' + (key || i), true) };
   });
 
   /* ── layout: sizes, copies, positions ── */

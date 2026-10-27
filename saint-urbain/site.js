@@ -2448,6 +2448,21 @@ function initRelatedWork(root = document, href = location.href) {
      date first: "<span class=u-color-faded>Oct 2, 2026</span> Title".
    — Idempotent (guarded) so Barba re-init won't re-wrap.
 ───────────────────────────────────────────── */
+/* Venture slides (About): the Background Color prop (any hex, e.g. #FFD200) lands on data-bg and
+   paints the logo tile. Runs before initMarquees so the marquee clones carry the colour. Empty or
+   invalid value: the tile keeps its default grey. */
+function initSlideColors(root = document) {
+  root.querySelectorAll('[data-bg]').forEach((slide) => {
+    if (slide.dataset.bgApplied) return;
+    slide.dataset.bgApplied = 'true';
+    let hex = (slide.getAttribute('data-bg') || '').trim();
+    if (hex && hex[0] !== '#') hex = '#' + hex;
+    if (!/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex)) return;
+    const tile = slide.querySelector('.ventures-logo-wrap') || slide;
+    tile.style.backgroundColor = hex;
+  });
+}
+
 function initWorkItemTitles(root = document) {
   root.querySelectorAll('.blog-item .work-news-title-wrap').forEach((wrap) => {
     if (wrap.dataset.titlesMerged === '1') return;
@@ -6688,6 +6703,7 @@ function allpages() {
   runInit('mobileMenu',    initMobileMenu);
   runInit('currentLinks',  initCurrentLinks);
   runInit('drawers',       initDrawers);
+  runInit('slideColors',   initSlideColors); // before marquees, so clones keep the colour
   runInit('marquees',      initMarquees);    // before swipers, which leave its strips alone
   runInit('swipers',       initSwipers);
   runInit('parallax',      initSectionImgParallax);

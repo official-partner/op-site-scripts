@@ -4090,6 +4090,19 @@ function teardownServicesFollow() {
 }
 
 const followKey = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+// The same picture, whatever its upload: same Webflow file id, or the same file
+// name once the id prefix, the responsive suffix (-p-500) and the extension are gone.
+const followPic = (src) => {
+  let f = (src || '').split('?')[0].split('/').pop() || '';
+  try { f = decodeURIComponent(f); } catch (e) {}
+  // A copied asset stacks ids (id_id_name): every one of them counts.
+  const ids = [];
+  let m;
+  while ((m = f.match(/^([0-9a-f]{24})_(.+)$/i))) { ids.push(m[1].toLowerCase()); f = m[2]; }
+  const name = f.replace(/\.[a-z0-9]+$/i, '').replace(/-p-\d+$/i, '').toLowerCase();
+  return { ids, name };
+};
+const followSamePic = (a, b) => !!(a && b && ((a.name && a.name === b.name) || a.ids.some(id => b.ids.includes(id))));
 const followFit = (r) => (r >= 1 ? [1, 1 / r] : [r, 1]); // window of ratio r in a unit square
 const followFormats = new Map();                           // visual → random format, kept for the visit
 
@@ -4226,9 +4239,15 @@ function setupServicesFollow(root) {
       services: Array.from(w.querySelectorAll('.services-work-service')).map(s => followKey(s.textContent))
     };
   }).filter(w => w.src);
-  const projects = items.map((el) => {
+  works.forEach((w) => { w.pic = followPic(w.src); });
+  // Each service's own picture: a project card never repeats the one in the frame.
+  const coverPics = covers.map((c) => {
+    const img = c.querySelector('img');
+    return img && !img.classList.contains('w-dyn-bind-empty') ? followPic(img.getAttribute('src')) : null;
+  });
+  const projects = items.map((el, i) => {
     const key = followKey((el.querySelector('.services-txt') || el).textContent);
-    return works.filter(w => w.services.includes(key));
+    return works.filter(w => w.services.includes(key) && !followSamePic(w.pic, coverPics[i]));
   });
 
   let R = 16; // px per rem, measured
@@ -4770,7 +4789,11 @@ function setupServicesFollow(root) {
 
   /* ── corner cycle: every visual on the page, in a shuffled round ── */
   let service = 0, cycleTw = null, cycleGen = 0, deck = [], deckAt = 0;
-  const visuals = coverLayers.concat(works.filter((w, k) => works.findIndex(o => o.src === w.src) === k));
+  // Every picture once: a project thumbnail that is also a service picture, or
+  // shared by two projects, goes in the round a single time.
+  const visuals = coverLayers.concat(works.filter((w, k) =>
+    works.findIndex(o => o.src === w.src || followSamePic(o.pic, w.pic)) === k &&
+    !coverPics.some(c => followSamePic(c, w.pic))));
   const layerOf = (v) => (v.sh ? v : projectLayer(main, v, main.size * 1.5));
   const showing = (v) => !!main.current && (v.sh ? v === main.current : main.current.key === v.src);
   // Next in the round, never the one showing nor one that failed to load;

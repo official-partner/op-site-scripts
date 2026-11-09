@@ -1969,7 +1969,6 @@ function setTheme(dark, animate = true) {
   // base layer and only fade the dark video (which sits on top in the DOM) in/out.
   const lightVids = document.querySelectorAll('.footer-spin-video.is-light-mode');
   const darkVids  = document.querySelectorAll('.footer-spin-video.is-dark-mode');
-  const ventureLogos = document.querySelectorAll('.venture-logo');
   if (lightVids.length) gsap.set(lightVids, { opacity: 1 }); // always-opaque base
 
   const render = () => {
@@ -1982,9 +1981,6 @@ function setTheme(dark, animate = true) {
       root.style.setProperty('--swatch--light-faded', gsap.utils.interpolate(swatchBaseLightFaded, swatchBaseDarkFaded,  p));
     }
     if (darkVids.length) gsap.set(darkVids, { opacity: p });
-    // Venture logos invert in dark mode. Flip at the crossfade midpoint rather
-    // than animating invert() (which would wash through grey).
-    if (ventureLogos.length) gsap.set(ventureLogos, { filter: p >= 0.5 ? 'invert(1)' : 'invert(0)' });
   };
 
   if (themeTween) themeTween.kill();

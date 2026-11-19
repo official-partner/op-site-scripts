@@ -2029,10 +2029,13 @@ function isWorkHours(tz) {
 (() => {
   const cities = [
     { code: 'NYC', tz: 'America/New_York'    },
-    { code: 'MTL', tz: 'America/Toronto'     },
     { code: 'MEX', tz: 'America/Mexico_City' },
-    { code: 'SYD', tz: 'Australia/Sydney'    },
+    { code: 'LOS', tz: 'America/Los_Angeles' },
+    { code: 'TYO', tz: 'Asia/Tokyo'          },
+    { code: 'LON', tz: 'Europe/London'       },
+    { code: 'MTL', tz: 'America/Toronto'     },
     { code: 'AMS', tz: 'Europe/Amsterdam'    },
+    { code: 'SYD', tz: 'Australia/Sydney'    },
   ];
 
   const fmt = clockText;
@@ -2666,6 +2669,84 @@ function initBlogArticle(root = document, href = location.href) {
 }
 
 /* ─────────────────────────────────────────────
+   MAIL COPY  (nav envelope: a.reach-flex, or any [data-copy-email])
+   — Job: one click puts the address on the clipboard instead of opening
+     a mail app (Simon). A small "Copied" label appears at the pointer,
+     rises a touch and fades out.
+   — The address is read from the link's mailto (or data-copy-email), so
+     changing it in Webflow is enough. If copying fails, the mailto opens
+     as before.
+   — One listener on the document for the whole visit: it covers the
+     persistent nav and any copy inside a page, before and after Barba.
+   — Keyboard: the label shows over the icon. Screen readers hear
+     "Address copied" once. Reduced motion: the label fades, no travel.
+───────────────────────────────────────────── */
+const MAIL_COPY = { done: 'Copied', said: 'Address copied', hold: 0.9, rise: 10 }; // label, spoken text, s on screen, px travel
+
+function initMailCopy() {
+  const SEL = 'a.reach-flex[href^="mailto:"], [data-copy-email]';
+  // The label says what the click now does (every page: a copy inside the page comes with it).
+  document.querySelectorAll(SEL).forEach((a) => {
+    if (a.dataset.mailCopy === '1') return;
+    a.dataset.mailCopy = '1';
+    const address = (a.getAttribute('data-copy-email') || (a.getAttribute('href') || '').replace(/^mailto:/i, '')).split('?')[0];
+    if (address) a.setAttribute('aria-label', 'Copy the email address ' + address);
+  });
+  if (window.__mailCopyInit) return;
+  window.__mailCopyInit = true;
+
+  const status = document.createElement('span');
+  status.setAttribute('role', 'status');
+  status.style.cssText = 'position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0';
+  document.body.appendChild(status);
+
+  let tag = null, statusTimer = 0;
+  const show = (x, y) => {
+    if (tag) { gsap.killTweensOf(tag); tag.remove(); }
+    const ref = document.querySelector('.nav-link-txt');
+    const cs = ref ? getComputedStyle(ref) : null;
+    tag = document.createElement('div');
+    tag.setAttribute('aria-hidden', 'true');
+    tag.textContent = MAIL_COPY.done;
+    tag.style.cssText = 'position:fixed;left:0;top:0;z-index:9999;pointer-events:none;white-space:nowrap;'
+      + 'padding:0.3em 0.55em;border-radius:0.25em;line-height:1;'
+      + 'background-color:var(--swatch--dark,#000);color:var(--swatch--light,#fff);'
+      + (cs ? `font-family:${cs.fontFamily};font-size:${cs.fontSize};letter-spacing:${cs.letterSpacing};text-transform:${cs.textTransform};font-weight:${cs.fontWeight};` : 'font-size:0.75rem;');
+    document.body.appendChild(tag);
+    // Just above and right of the pointer, kept on screen.
+    const w = tag.offsetWidth, h = tag.offsetHeight;
+    const left = Math.min(Math.max(8, x + 12), window.innerWidth - w - 8);
+    const top  = Math.min(Math.max(8, y - h - 12), window.innerHeight - h - 8);
+    const el = tag;
+    const travel = reducedMotion ? 0 : MAIL_COPY.rise;
+    gsap.timeline({ onComplete: () => { el.remove(); if (tag === el) tag = null; } })
+      .fromTo(el, { x: left, y: top + travel * 0.4, autoAlpha: 0 }, { y: top, autoAlpha: 1, duration: 0.2, ease: 'power2.out' })
+      .to(el, { y: top - travel, autoAlpha: 0, duration: 0.35, ease: 'power2.in' }, '+=' + MAIL_COPY.hold);
+  };
+
+  document.addEventListener('click', (e) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; // a modified click keeps the mailto
+    const a = e.target.closest && e.target.closest(SEL);
+    if (!a) return;
+    const raw = a.getAttribute('data-copy-email') || (a.getAttribute('href') || '').replace(/^mailto:/i, '');
+    const address = decodeURIComponent(raw.split('?')[0]).trim();
+    if (!address) return;
+    e.preventDefault();
+    const keyboard = !e.detail; // Enter on a focused link fires a click with no pointer
+    const r = a.getBoundingClientRect();
+    const x = keyboard ? r.left + r.width / 2 : e.clientX;
+    const y = keyboard ? r.top : e.clientY;
+    copyText(address).then((ok) => {
+      if (!ok) { window.location.href = 'mailto:' + address; return; }
+      show(x, y);
+      status.textContent = MAIL_COPY.said;
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(() => { status.textContent = ''; }, 2000);
+    });
+  }, true);
+}
+
+/* ─────────────────────────────────────────────
    VIDEO PLAY (shared by every video the site plays itself)
    — play() can be refused: iOS in Low Power Mode, or a browser set to
      never autoplay. The video then shows anyway once its first frame is
@@ -2876,15 +2957,21 @@ function initServiceFeatures(root) {
   servicePageTeardown.push(() => live.forEach(f => gsap.killTweensOf(parts(f))));
 }
 
+const SERVICE_CARD_COLORS = ['--swatch--orange', '--swatch--green', '--swatch--yellow', '--swatch--red', '--swatch--blue'];
+
 function initServiceCards(root) {
   const cards = Array.from(root.querySelectorAll('[data-service-cards] .service-card'));
   if (!cards.length) return;
   const here = navPath(location.pathname);
 
-  cards.forEach((card) => {
-    const raw = (card.getAttribute('data-color') || '').trim();
-    const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(raw) ? (raw[0] === '#' ? raw : '#' + raw) : '';
-    if (hex) card.style.backgroundColor = hex;
+  // Colours alternate in list order, the same five as the News cards (orange, green, yellow,
+  // red, blue), so two neighbours never match. The order is the CMS order: Swiper's loop moves
+  // slides around in the page, so it's read from data-swiper-slide-index when Swiper set one.
+  // The CMS Card Color field is no longer used here.
+  cards.forEach((card, i) => {
+    const slide = card.closest('.swiper-slide');
+    const n = slide && slide.dataset.swiperSlideIndex != null ? +slide.dataset.swiperSlideIndex : i;
+    card.style.backgroundColor = `var(${SERVICE_CARD_COLORS[n % SERVICE_CARD_COLORS.length]})`;
     if (card.pathname && navPath(card.pathname) === here) card.setAttribute('aria-current', 'page');
 
     const visual = card.querySelector('.service-card-visual');
@@ -2983,7 +3070,10 @@ function setupIncludedFollow(list, rows) {
   // Each row's own picture: read for the frame, hidden (layout kept, to measure) while this runs.
   const wraps = rows.map(row => row.querySelector('.award-img-wrap'));
   const pics = wraps.map((wrap, i) => {
-    const media = wrap && wrap.querySelector('.g_visual_img:not(.w-condition-invisible):not(.w-dyn-bind-empty), .g_visual_video:not(.w-condition-invisible)');
+    // The row's video wins when its Video field is filled; otherwise its picture.
+    const clip = wrap && Array.from(wrap.querySelectorAll('.g_visual_video:not(.w-condition-invisible)'))
+      .find(v => (v.getAttribute('data-source') || v.getAttribute('src') || '').trim());
+    const media = clip || (wrap && wrap.querySelector('.g_visual_img:not(.w-condition-invisible):not(.w-dyn-bind-empty)'));
     if (wrap) wrap.style.visibility = 'hidden';
     if (!media) return null;
     const video = media.tagName === 'VIDEO';
@@ -6719,6 +6809,7 @@ function allpages() {
   runInit('relatedPosts',  initRelatedPosts);  // blog article: the 3 newest other posts
   runInit('blogArticle',   initBlogArticle);   // blog article: share, project link, empty meta rows
   runInit('year',          initYear);
+  runInit('mailCopy',      initMailCopy);    // nav envelope copies the address; once per visit, a no-op after
   runInit('mobileMenu',    initMobileMenu);
   runInit('currentLinks',  initCurrentLinks);
   runInit('drawers',       initDrawers);

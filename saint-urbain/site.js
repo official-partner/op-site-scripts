@@ -1969,7 +1969,6 @@ function setTheme(dark, animate = true) {
   // base layer and only fade the dark video (which sits on top in the DOM) in/out.
   const lightVids = document.querySelectorAll('.footer-spin-video.is-light-mode');
   const darkVids  = document.querySelectorAll('.footer-spin-video.is-dark-mode');
-  const ventureLogos = document.querySelectorAll('.venture-logo');
   if (lightVids.length) gsap.set(lightVids, { opacity: 1 }); // always-opaque base
 
   const render = () => {
@@ -1982,9 +1981,6 @@ function setTheme(dark, animate = true) {
       root.style.setProperty('--swatch--light-faded', gsap.utils.interpolate(swatchBaseLightFaded, swatchBaseDarkFaded,  p));
     }
     if (darkVids.length) gsap.set(darkVids, { opacity: p });
-    // Venture logos invert in dark mode. Flip at the crossfade midpoint rather
-    // than animating invert() (which would wash through grey).
-    if (ventureLogos.length) gsap.set(ventureLogos, { filter: p >= 0.5 ? 'invert(1)' : 'invert(0)' });
   };
 
   if (themeTween) themeTween.kill();
@@ -2033,10 +2029,13 @@ function isWorkHours(tz) {
 (() => {
   const cities = [
     { code: 'NYC', tz: 'America/New_York'    },
-    { code: 'MTL', tz: 'America/Toronto'     },
     { code: 'MEX', tz: 'America/Mexico_City' },
-    { code: 'SYD', tz: 'Australia/Sydney'    },
+    { code: 'LOS', tz: 'America/Los_Angeles' },
+    { code: 'TYO', tz: 'Asia/Tokyo'          },
+    { code: 'LON', tz: 'Europe/London'       },
+    { code: 'MTL', tz: 'America/Toronto'     },
     { code: 'AMS', tz: 'Europe/Amsterdam'    },
+    { code: 'SYD', tz: 'Australia/Sydney'    },
   ];
 
   const fmt = clockText;
@@ -2448,6 +2447,21 @@ function initRelatedWork(root = document, href = location.href) {
      date first: "<span class=u-color-faded>Oct 2, 2026</span> Title".
    — Idempotent (guarded) so Barba re-init won't re-wrap.
 ───────────────────────────────────────────── */
+/* Venture slides (About): the Background Color prop (any hex, e.g. #FFD200) lands on data-bg and
+   paints the logo tile. Runs before initMarquees so the marquee clones carry the colour. Empty or
+   invalid value: the tile keeps its default grey. */
+function initSlideColors(root = document) {
+  root.querySelectorAll('[data-bg]').forEach((slide) => {
+    if (slide.dataset.bgApplied) return;
+    slide.dataset.bgApplied = 'true';
+    let hex = (slide.getAttribute('data-bg') || '').trim();
+    if (hex && hex[0] !== '#') hex = '#' + hex;
+    if (!/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex)) return;
+    const tile = slide.querySelector('.ventures-logo-wrap') || slide;
+    tile.style.backgroundColor = hex;
+  });
+}
+
 function initWorkItemTitles(root = document) {
   root.querySelectorAll('.blog-item .work-news-title-wrap').forEach((wrap) => {
     if (wrap.dataset.titlesMerged === '1') return;
@@ -2652,6 +2666,84 @@ function initBlogArticle(root = document, href = location.href) {
     a.addEventListener('click', copy);
     a.addEventListener('keydown', (e) => { if (e.key === ' ') copy(e); }); // a button also answers Space
   });
+}
+
+/* ─────────────────────────────────────────────
+   MAIL COPY  (nav envelope: a.reach-flex, or any [data-copy-email])
+   — Job: one click puts the address on the clipboard instead of opening
+     a mail app (Simon). A small "Copied" label appears at the pointer,
+     rises a touch and fades out.
+   — The address is read from the link's mailto (or data-copy-email), so
+     changing it in Webflow is enough. If copying fails, the mailto opens
+     as before.
+   — One listener on the document for the whole visit: it covers the
+     persistent nav and any copy inside a page, before and after Barba.
+   — Keyboard: the label shows over the icon. Screen readers hear
+     "Address copied" once. Reduced motion: the label fades, no travel.
+───────────────────────────────────────────── */
+const MAIL_COPY = { done: 'Copied', said: 'Address copied', hold: 0.9, rise: 10 }; // label, spoken text, s on screen, px travel
+
+function initMailCopy() {
+  const SEL = 'a.reach-flex[href^="mailto:"], [data-copy-email]';
+  // The label says what the click now does (every page: a copy inside the page comes with it).
+  document.querySelectorAll(SEL).forEach((a) => {
+    if (a.dataset.mailCopy === '1') return;
+    a.dataset.mailCopy = '1';
+    const address = (a.getAttribute('data-copy-email') || (a.getAttribute('href') || '').replace(/^mailto:/i, '')).split('?')[0];
+    if (address) a.setAttribute('aria-label', 'Copy the email address ' + address);
+  });
+  if (window.__mailCopyInit) return;
+  window.__mailCopyInit = true;
+
+  const status = document.createElement('span');
+  status.setAttribute('role', 'status');
+  status.style.cssText = 'position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0';
+  document.body.appendChild(status);
+
+  let tag = null, statusTimer = 0;
+  const show = (x, y) => {
+    if (tag) { gsap.killTweensOf(tag); tag.remove(); }
+    const ref = document.querySelector('.nav-link-txt');
+    const cs = ref ? getComputedStyle(ref) : null;
+    tag = document.createElement('div');
+    tag.setAttribute('aria-hidden', 'true');
+    tag.textContent = MAIL_COPY.done;
+    tag.style.cssText = 'position:fixed;left:0;top:0;z-index:9999;pointer-events:none;white-space:nowrap;'
+      + 'padding:0.3em 0.55em;border-radius:0.25em;line-height:1;'
+      + 'background-color:var(--swatch--dark,#000);color:var(--swatch--light,#fff);'
+      + (cs ? `font-family:${cs.fontFamily};font-size:${cs.fontSize};letter-spacing:${cs.letterSpacing};text-transform:${cs.textTransform};font-weight:${cs.fontWeight};` : 'font-size:0.75rem;');
+    document.body.appendChild(tag);
+    // Just above and right of the pointer, kept on screen.
+    const w = tag.offsetWidth, h = tag.offsetHeight;
+    const left = Math.min(Math.max(8, x + 12), window.innerWidth - w - 8);
+    const top  = Math.min(Math.max(8, y - h - 12), window.innerHeight - h - 8);
+    const el = tag;
+    const travel = reducedMotion ? 0 : MAIL_COPY.rise;
+    gsap.timeline({ onComplete: () => { el.remove(); if (tag === el) tag = null; } })
+      .fromTo(el, { x: left, y: top + travel * 0.4, autoAlpha: 0 }, { y: top, autoAlpha: 1, duration: 0.2, ease: 'power2.out' })
+      .to(el, { y: top - travel, autoAlpha: 0, duration: 0.35, ease: 'power2.in' }, '+=' + MAIL_COPY.hold);
+  };
+
+  document.addEventListener('click', (e) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; // a modified click keeps the mailto
+    const a = e.target.closest && e.target.closest(SEL);
+    if (!a) return;
+    const raw = a.getAttribute('data-copy-email') || (a.getAttribute('href') || '').replace(/^mailto:/i, '');
+    const address = decodeURIComponent(raw.split('?')[0]).trim();
+    if (!address) return;
+    e.preventDefault();
+    const keyboard = !e.detail; // Enter on a focused link fires a click with no pointer
+    const r = a.getBoundingClientRect();
+    const x = keyboard ? r.left + r.width / 2 : e.clientX;
+    const y = keyboard ? r.top : e.clientY;
+    copyText(address).then((ok) => {
+      if (!ok) { window.location.href = 'mailto:' + address; return; }
+      show(x, y);
+      status.textContent = MAIL_COPY.said;
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(() => { status.textContent = ''; }, 2000);
+    });
+  }, true);
 }
 
 /* ─────────────────────────────────────────────
@@ -2865,15 +2957,21 @@ function initServiceFeatures(root) {
   servicePageTeardown.push(() => live.forEach(f => gsap.killTweensOf(parts(f))));
 }
 
+const SERVICE_CARD_COLORS = ['--swatch--orange', '--swatch--green', '--swatch--yellow', '--swatch--red', '--swatch--blue'];
+
 function initServiceCards(root) {
   const cards = Array.from(root.querySelectorAll('[data-service-cards] .service-card'));
   if (!cards.length) return;
   const here = navPath(location.pathname);
 
-  cards.forEach((card) => {
-    const raw = (card.getAttribute('data-color') || '').trim();
-    const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(raw) ? (raw[0] === '#' ? raw : '#' + raw) : '';
-    if (hex) card.style.backgroundColor = hex;
+  // Colours alternate in list order, the same five as the News cards (orange, green, yellow,
+  // red, blue), so two neighbours never match. The order is the CMS order: Swiper's loop moves
+  // slides around in the page, so it's read from data-swiper-slide-index when Swiper set one.
+  // The CMS Card Color field is no longer used here.
+  cards.forEach((card, i) => {
+    const slide = card.closest('.swiper-slide');
+    const n = slide && slide.dataset.swiperSlideIndex != null ? +slide.dataset.swiperSlideIndex : i;
+    card.style.backgroundColor = `var(${SERVICE_CARD_COLORS[n % SERVICE_CARD_COLORS.length]})`;
     if (card.pathname && navPath(card.pathname) === here) card.setAttribute('aria-current', 'page');
 
     const visual = card.querySelector('.service-card-visual');
@@ -2918,7 +3016,8 @@ function initServiceCards(root) {
      in and out like the awards badge (awardsBadge recipe) and swaps to
      the hovered row's picture like the Services frame (servicesSwap
      recipe), the window taking each picture's format (portrait, square
-     or landscape: random for now, or data-format on the item). No
+     or landscape: the Inclusion's Image Format in the CMS, bound as
+     data-format on the row; empty or Auto follows the picture). No
      project cards trail it.
    — Hooks: [data-included-follow] on the list of .award-item rows, each
      with its .award-img-wrap picture (read for the frame, hidden while
@@ -2971,7 +3070,10 @@ function setupIncludedFollow(list, rows) {
   // Each row's own picture: read for the frame, hidden (layout kept, to measure) while this runs.
   const wraps = rows.map(row => row.querySelector('.award-img-wrap'));
   const pics = wraps.map((wrap, i) => {
-    const media = wrap && wrap.querySelector('.g_visual_img:not(.w-condition-invisible):not(.w-dyn-bind-empty), .g_visual_video:not(.w-condition-invisible)');
+    // The row's video wins when its Video field is filled; otherwise its picture.
+    const clip = wrap && Array.from(wrap.querySelectorAll('.g_visual_video:not(.w-condition-invisible)'))
+      .find(v => (v.getAttribute('data-source') || v.getAttribute('src') || '').trim());
+    const media = clip || (wrap && wrap.querySelector('.g_visual_img:not(.w-condition-invisible):not(.w-dyn-bind-empty)'));
     if (wrap) wrap.style.visibility = 'hidden';
     if (!media) return null;
     const video = media.tagName === 'VIDEO';
@@ -3012,11 +3114,14 @@ function setupIncludedFollow(list, rows) {
     gsap.set(el, { visibility: 'hidden', opacity: 0 });
     const L = { el, inner: media, img: p.video ? null : media, video: p.video ? media : null, sizes: !p.video,
                 on: false, z: 0, mw: 0, mh: 0, tf: '', ar: 0, loaded: false, pic: p,
-                ratio: followFormat(p.item, 'included:' + p.src) };
+                fixed: followFormat(p.item, 'included:' + p.src),
+                get ratio() { return followRatio(this.fixed, this.ar); } };
     const onMeta = () => {
       const ar = L.img ? L.img.naturalWidth / L.img.naturalHeight : L.video.videoWidth / L.video.videoHeight;
       if (!(ar > 0) || !isFinite(ar)) return;
       L.ar = ar;
+      // Auto format: the window takes the picture's shape once it's known.
+      if (!L.fixed && sh.current === L) [sh.tw, sh.th] = followFit(L.ratio);
       sh.dirty = true;
       wake();
     };
@@ -4006,9 +4111,10 @@ function initVideos() {
      with their pictures ready. A card already out keeps its place and
      only crossfades; a project the next service shares stays on its
      card. The row keeps its length for the whole visit to the list.
-   — Every visual has a format: portrait 4:5, square or landscape 3:2.
-     Random for now (kept for the visit), or read from data-format on
-     its CMS item ("portrait", "square", "landscape" or "16:9").
+   — Every visual has a format: portrait 4:5, square or landscape 3:2,
+     set in the CMS (Services: Image Format, Works: Thumbnail Format),
+     bound as data-format on its list item. Empty or Auto: the format
+     closest to the picture's own shape, once it has loaded.
      The frame's window reshapes on a spring and the picture reframes
      to fill it, never stretched. At home the window stays locked to
      the top-right corner.
@@ -4070,19 +4176,49 @@ function teardownServicesFollow() {
 }
 
 const followKey = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+// The same picture, whatever its upload: same Webflow file id, or the same file
+// name once the id prefix, the responsive suffix (-p-500) and the extension are gone.
+const followPic = (src) => {
+  let f = (src || '').split('?')[0].split('/').pop() || '';
+  try { f = decodeURIComponent(f); } catch (e) {}
+  // A copied asset stacks ids (id_id_name): every one of them counts.
+  const ids = [];
+  let m;
+  while ((m = f.match(/^([0-9a-f]{24})_(.+)$/i))) { ids.push(m[1].toLowerCase()); f = m[2]; }
+  const name = f.replace(/\.[a-z0-9]+$/i, '').replace(/-p-\d+$/i, '').toLowerCase();
+  return { ids, name };
+};
+const followSamePic = (a, b) => !!(a && b && ((a.name && a.name === b.name) || a.ids.some(id => b.ids.includes(id))));
 const followFit = (r) => (r >= 1 ? [1, 1 / r] : [r, 1]); // window of ratio r in a unit square
 const followFormats = new Map();                           // visual → random format, kept for the visit
 
-// Format of a visual: data-format on its CMS item, else random.
-function followFormat(item, key) {
+// Format of a visual, from data-format on its CMS item (the CMS "format"
+// option fields): "Portrait 4:5", "Square", "Landscape", or a ratio like
+// "16:9". Empty or "Auto": 0, meaning the picture's own shape decides
+// (followRatio). random: true keeps the old behaviour, a random format
+// kept for the visit (carousel slides that aren't the Slide / Media component).
+function followFormat(item, key, random) {
   const host = item && (item.hasAttribute('data-format') ? item : item.querySelector('[data-format]'));
   const raw  = host ? followKey(host.getAttribute('data-format')) : '';
   const F    = SERVICES_FOLLOW.formats;
   if (F[raw]) return F[raw];
-  const m = raw.match(/^(\d*\.?\d+)\s*[:/x]\s*(\d*\.?\d+)$/);
+  if (/^(portrait|vertical|tall)\b/.test(raw)) return F.portrait;
+  if (/^square\b/.test(raw)) return F.square;
+  if (/^(landscape|horizontal|wide)\b/.test(raw)) return F.landscape;
+  const m = raw.match(/(\d*\.?\d+)\s*[:/x]\s*(\d*\.?\d+)/);
   if (m && +m[1] && +m[2]) return gsap.utils.clamp(0.5, 2, m[1] / m[2]);
+  if (!random) return 0;
   if (!followFormats.has(key)) followFormats.set(key, gsap.utils.random(Object.values(F)));
   return followFormats.get(key);
+}
+
+// The format a visual shows in: its CMS format, else the one of the three
+// closest to the picture's own shape (ar), else square until the picture is known.
+function followRatio(fixed, ar) {
+  if (fixed) return fixed;
+  if (!(ar > 0) || !isFinite(ar)) return SERVICES_FOLLOW.formats.square;
+  return Object.values(SERVICES_FOLLOW.formats)
+    .reduce((best, f) => (Math.abs(Math.log(f / ar)) < Math.abs(Math.log(best / ar)) ? f : best));
 }
 
 // Critically damped spring: the value chases its target and stays smooth when
@@ -4189,9 +4325,15 @@ function setupServicesFollow(root) {
       services: Array.from(w.querySelectorAll('.services-work-service')).map(s => followKey(s.textContent))
     };
   }).filter(w => w.src);
-  const projects = items.map((el) => {
+  works.forEach((w) => { w.pic = followPic(w.src); });
+  // Each service's own picture: a project card never repeats the one in the frame.
+  const coverPics = covers.map((c) => {
+    const img = c.querySelector('img');
+    return img && !img.classList.contains('w-dyn-bind-empty') ? followPic(img.getAttribute('src')) : null;
+  });
+  const projects = items.map((el, i) => {
     const key = followKey((el.querySelector('.services-txt') || el).textContent);
-    return works.filter(w => w.services.includes(key));
+    return works.filter(w => w.services.includes(key) && !followSamePic(w.pic, coverPics[i]));
   });
 
   let R = 16; // px per rem, measured
@@ -4228,6 +4370,8 @@ function setupServicesFollow(root) {
     if (!(ar > 0) || !isFinite(ar) || Math.abs(ar - L.ar) < 1e-3) return;
     L.ar = ar;
     L.sh.dirty = true;
+    // Auto format: the window takes the picture's shape once it's known.
+    if (!L.fixed && L.sh.current === L) setFormat(L.sh, L.ratio);
     wake();
   };
 
@@ -4236,7 +4380,8 @@ function setupServicesFollow(root) {
                 failed: false,
                 img:   media && media.tagName === 'IMG' ? media : null,
                 video: media && media.tagName === 'VIDEO' ? media : null,
-                ratio: followFormat(item || el, key) };
+                fixed: followFormat(item || el, key),
+                get ratio() { return followRatio(this.fixed, this.ar); } };
     el.style.position = 'absolute';
     el.style.inset = '0 auto auto 0';
     el.style.transformOrigin = '50% 50%';
@@ -4730,7 +4875,11 @@ function setupServicesFollow(root) {
 
   /* ── corner cycle: every visual on the page, in a shuffled round ── */
   let service = 0, cycleTw = null, cycleGen = 0, deck = [], deckAt = 0;
-  const visuals = coverLayers.concat(works.filter((w, k) => works.findIndex(o => o.src === w.src) === k));
+  // Every picture once: a project thumbnail that is also a service picture, or
+  // shared by two projects, goes in the round a single time.
+  const visuals = coverLayers.concat(works.filter((w, k) =>
+    works.findIndex(o => o.src === w.src || followSamePic(o.pic, w.pic)) === k &&
+    !coverPics.some(c => followSamePic(c, w.pic))));
   const layerOf = (v) => (v.sh ? v : projectLayer(main, v, main.size * 1.5));
   const showing = (v) => !!main.current && (v.sh ? v === main.current : main.current.key === v.src);
   // Next in the round, never the one showing nor one that failed to load;
@@ -5059,7 +5208,8 @@ function initHoverTrail() {
     const src = img.classList.contains('w-dyn-bind-empty') ? '' : img.getAttribute('src') || '';
     if (!src || seen.has(src)) return;
     seen.add(src);
-    media.push({ src, srcset: img.getAttribute('srcset') || '', ratio: followFormat(img.closest('.w-dyn-item') || img, src),
+    media.push({ src, srcset: img.getAttribute('srcset') || '', fixed: followFormat(img.closest('.w-dyn-item') || img, src),
+                 get ratio() { return followRatio(this.fixed, this.pic && this.pic.naturalWidth / this.pic.naturalHeight); },
                  pic: null, ready: false, failed: false });
   });
   if (!words.length || !media.length) return;
@@ -5626,7 +5776,7 @@ function setupMarquee(el, undo) {
     const shown = wrap.querySelector('img:not(.w-condition-invisible), video:not(.w-condition-invisible)');
     const key = shown ? shown.getAttribute('src') || shown.getAttribute('data-source') : '';
     const imgs = Array.from(wrap.querySelectorAll('img[srcset]'));
-    return { wrap, imgs, sizes: imgs.map(img => img.getAttribute('sizes')), ratio: followFormat(s, 'marquee:' + (key || i)) };
+    return { wrap, imgs, sizes: imgs.map(img => img.getAttribute('sizes')), ratio: followFormat(s, 'marquee:' + (key || i), true) };
   });
 
   /* ── layout: sizes, copies, positions ── */
@@ -6659,9 +6809,11 @@ function allpages() {
   runInit('relatedPosts',  initRelatedPosts);  // blog article: the 3 newest other posts
   runInit('blogArticle',   initBlogArticle);   // blog article: share, project link, empty meta rows
   runInit('year',          initYear);
+  runInit('mailCopy',      initMailCopy);    // nav envelope copies the address; once per visit, a no-op after
   runInit('mobileMenu',    initMobileMenu);
   runInit('currentLinks',  initCurrentLinks);
   runInit('drawers',       initDrawers);
+  runInit('slideColors',   initSlideColors); // before marquees, so clones keep the colour
   runInit('marquees',      initMarquees);    // before swipers, which leave its strips alone
   runInit('swipers',       initSwipers);
   runInit('parallax',      initSectionImgParallax);

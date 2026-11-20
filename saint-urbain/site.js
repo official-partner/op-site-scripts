@@ -2671,17 +2671,21 @@ function initBlogArticle(root = document, href = location.href) {
 /* ─────────────────────────────────────────────
    MAIL COPY  (nav envelope: a.reach-flex, or any [data-copy-email])
    — Job: one click puts the address on the clipboard instead of opening
-     a mail app (Simon). A small "Copied" label appears at the pointer,
-     rises a touch and fades out.
+     a mail app (Simon). "Copied" opens as plain text just right of the
+     icon: its width grows from 0, so the toggle and the envelope slide
+     left to make room (the nav row is right-aligned), then it closes and
+     they slide back (Sam, Nov 20).
+   — The text takes the nav text style (.nav-link-txt) and the current
+     colour, so it follows the dark / light theme.
    — The address is read from the link's mailto (or data-copy-email), so
      changing it in Webflow is enough. If copying fails, the mailto opens
-     as before.
+     as before. A second click while it shows starts it over.
    — One listener on the document for the whole visit: it covers the
      persistent nav and any copy inside a page, before and after Barba.
-   — Keyboard: the label shows over the icon. Screen readers hear
-     "Address copied" once. Reduced motion: the label fades, no travel.
+   — Screen readers hear "Address copied" once. Reduced motion: the room
+     opens at once and the text only fades.
 ───────────────────────────────────────────── */
-const MAIL_COPY = { done: 'Copied', said: 'Address copied', hold: 0.9, rise: 10 }; // label, spoken text, s on screen, px travel
+const MAIL_COPY = { done: 'Copied', said: 'Address copied', hold: 1.2, open: 0.5, close: 0.45, gap: '0.4em' }; // label, spoken text, s on screen, s to open, s to close, space after the icon
 
 function initMailCopy() {
   const SEL = 'a.reach-flex[href^="mailto:"], [data-copy-email]';
@@ -2699,29 +2703,41 @@ function initMailCopy() {
   status.setAttribute('role', 'status');
   status.style.cssText = 'position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0';
   document.body.appendChild(status);
+  let statusTimer = 0;
 
-  let tag = null, statusTimer = 0;
-  const show = (x, y) => {
-    if (tag) { gsap.killTweensOf(tag); tag.remove(); }
+  const show = (a) => {
+    const prev = a.__mailCopy;
+    if (prev) { prev.tl.kill(); prev.wrap.remove(); }
     const ref = document.querySelector('.nav-link-txt');
     const cs = ref ? getComputedStyle(ref) : null;
-    tag = document.createElement('div');
-    tag.setAttribute('aria-hidden', 'true');
-    tag.textContent = MAIL_COPY.done;
-    tag.style.cssText = 'position:fixed;left:0;top:0;z-index:9999;pointer-events:none;white-space:nowrap;'
-      + 'padding:0.3em 0.55em;border-radius:0.25em;line-height:1;'
-      + 'background-color:var(--swatch--dark,#000);color:var(--swatch--light,#fff);'
-      + (cs ? `font-family:${cs.fontFamily};font-size:${cs.fontSize};letter-spacing:${cs.letterSpacing};text-transform:${cs.textTransform};font-weight:${cs.fontWeight};` : 'font-size:0.75rem;');
-    document.body.appendChild(tag);
-    // Just above and right of the pointer, kept on screen.
-    const w = tag.offsetWidth, h = tag.offsetHeight;
-    const left = Math.min(Math.max(8, x + 12), window.innerWidth - w - 8);
-    const top  = Math.min(Math.max(8, y - h - 12), window.innerHeight - h - 8);
-    const el = tag;
-    const travel = reducedMotion ? 0 : MAIL_COPY.rise;
-    gsap.timeline({ onComplete: () => { el.remove(); if (tag === el) tag = null; } })
-      .fromTo(el, { x: left, y: top + travel * 0.4, autoAlpha: 0 }, { y: top, autoAlpha: 1, duration: 0.2, ease: 'power2.out' })
-      .to(el, { y: top - travel, autoAlpha: 0, duration: 0.35, ease: 'power2.in' }, '+=' + MAIL_COPY.hold);
+    // wrap: the room that opens (width 0 → text width). txt: the word inside it.
+    const wrap = document.createElement('span');
+    wrap.setAttribute('aria-hidden', 'true');
+    wrap.style.cssText = 'display:flex;align-items:center;align-self:center;flex:none;overflow:hidden;white-space:nowrap;width:0;pointer-events:none;';
+    const txt = document.createElement('span');
+    txt.textContent = MAIL_COPY.done;
+    txt.style.cssText = `display:block;flex:none;line-height:1;padding-left:${MAIL_COPY.gap};`
+      + (cs ? `font-family:${cs.fontFamily};font-size:${cs.fontSize};letter-spacing:${cs.letterSpacing};text-transform:${cs.textTransform};font-weight:${cs.fontWeight};` : 'font-weight:700;text-transform:uppercase;');
+    wrap.appendChild(txt);
+    a.after(wrap);
+    const w = txt.offsetWidth;
+
+    const tl = gsap.timeline({ onComplete: () => {
+      wrap.remove();
+      if (a.__mailCopy && a.__mailCopy.wrap === wrap) a.__mailCopy = null;
+    } });
+    if (reducedMotion) {
+      tl.set(wrap, { width: w })
+        .fromTo(txt, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.2, ease: 'none' })
+        .to(txt, { autoAlpha: 0, duration: 0.2, ease: 'none' }, '+=' + MAIL_COPY.hold)
+        .set(wrap, { width: 0 });
+    } else {
+      tl.to(wrap, { width: w, duration: MAIL_COPY.open, ease: 'power3.inOut' })
+        .fromTo(txt, { autoAlpha: 0, x: -8 }, { autoAlpha: 1, x: 0, duration: 0.35, ease: 'power2.out' }, '-=0.25')
+        .to(txt, { autoAlpha: 0, duration: 0.25, ease: 'power2.in' }, '+=' + MAIL_COPY.hold)
+        .to(wrap, { width: 0, duration: MAIL_COPY.close, ease: 'power3.inOut' }, '-=0.1');
+    }
+    a.__mailCopy = { wrap, tl };
   };
 
   document.addEventListener('click', (e) => {
@@ -2732,13 +2748,9 @@ function initMailCopy() {
     const address = decodeURIComponent(raw.split('?')[0]).trim();
     if (!address) return;
     e.preventDefault();
-    const keyboard = !e.detail; // Enter on a focused link fires a click with no pointer
-    const r = a.getBoundingClientRect();
-    const x = keyboard ? r.left + r.width / 2 : e.clientX;
-    const y = keyboard ? r.top : e.clientY;
     copyText(address).then((ok) => {
       if (!ok) { window.location.href = 'mailto:' + address; return; }
-      show(x, y);
+      show(a);
       status.textContent = MAIL_COPY.said;
       clearTimeout(statusTimer);
       statusTimer = setTimeout(() => { status.textContent = ''; }, 2000);

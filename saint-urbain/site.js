@@ -2679,7 +2679,11 @@ function initBlogArticle(root = document, href = location.href) {
      colour, so it follows the dark / light theme.
    — The address is read from the link's mailto (or data-copy-email), so
      changing it in Webflow is enough. If copying fails, the mailto opens
-     as before. A second click while it shows starts it over.
+     as before. A click while it is still playing copies again but does
+     not replay it (Sam, Nov 20).
+   — The capitals are centred on the icon, not the text box: the box keeps
+     room for descenders, so the word would sit high. The offset is
+     measured from the font on each show (alignToIcon).
    — One listener on the document for the whole visit: it covers the
      persistent nav and any copy inside a page, before and after Barba.
    — Screen readers hear "Address copied" once. Reduced motion: the room
@@ -2705,9 +2709,26 @@ function initMailCopy() {
   document.body.appendChild(status);
   let statusTimer = 0;
 
+  // Moves txt so the middle of its capitals lines up with the middle of the icon.
+  const alignToIcon = (a, txt) => {
+    const icon = a.querySelector('svg') || a.firstElementChild || a;
+    const cs = getComputedStyle(txt);
+    const ctx = document.createElement('canvas').getContext('2d');
+    if (!ctx) return 0;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const m = ctx.measureText(txt.textContent.toUpperCase());
+    if (!m.fontBoundingBoxAscent) return 0; // older browser: leave it centred on its box
+    const box = txt.getBoundingClientRect();
+    const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize);
+    const baseline = box.top + (lh - (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent)) / 2 + m.fontBoundingBoxAscent;
+    const capsMiddle = baseline - (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+    const r = icon.getBoundingClientRect();
+    const dy = (r.top + r.bottom) / 2 - capsMiddle;
+    return Math.abs(dy) < lh / 2 ? dy : 0; // a wild value means a bad measure: skip it
+  };
+
   const show = (a) => {
-    const prev = a.__mailCopy;
-    if (prev) { prev.tl.kill(); prev.wrap.remove(); }
+    if (a.__mailCopy) return; // still playing: no replay
     const ref = document.querySelector('.nav-link-txt');
     const cs = ref ? getComputedStyle(ref) : null;
     // wrap: the room that opens (width 0 → text width). txt: the word inside it.
@@ -2721,6 +2742,7 @@ function initMailCopy() {
     wrap.appendChild(txt);
     a.after(wrap);
     const w = txt.offsetWidth;
+    gsap.set(txt, { y: alignToIcon(a, txt) });
 
     const tl = gsap.timeline({ onComplete: () => {
       wrap.remove();

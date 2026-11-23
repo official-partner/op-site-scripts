@@ -8,6 +8,7 @@ Served by Cloudflare Workers (static assets) from this repo, account `samuel-3f4
 | Folder | Webflow site | Staging address |
 | --- | --- | --- |
 | `saint-urbain/` | Saint-Urbain (ID `69a094ccd1d488d0b58d8549`) | sainturbain.webflow.io |
+| `normal-computing/` | Normal Computing (ID `67ae4a75c083dc1cf3edce9c`) | normal-computing-01.webflow.io |
 
 Each folder holds `site.js` (the source we edit) and `site.min.js` (the file sites load).
 
@@ -20,6 +21,13 @@ Saint-Urbain:
 
 - Production: https://op-site-scripts.samuel-3f4.workers.dev/saint-urbain/site.min.js
 - Staging: https://staging-op-site-scripts.samuel-3f4.workers.dev/saint-urbain/site.min.js
+
+Normal Computing:
+
+- Production: https://op-site-scripts.samuel-3f4.workers.dev/normal-computing/site.min.js
+- Staging: https://staging-op-site-scripts.samuel-3f4.workers.dev/normal-computing/site.min.js
+- The MathJax config object stays inline in Webflow's footer, just before the MathJax tag,
+  so MathJax reads it before it starts. Everything else is in `site.js`.
 
 A push updates its link within about a minute. Browsers re-check the file
 every 60 seconds (`_headers`). No link to change and nothing to publish in Webflow.

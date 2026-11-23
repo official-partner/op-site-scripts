@@ -987,7 +987,7 @@ function renderMathJax() {
 /* =========================================================================
    3. HARDWARE
    Hardware page: model chart positions, chart scroll on tablet and mobile,
-   "See performance" scroll. Runs on first load and after every Barba
+   "See performance" scroll, the two dropdowns. Runs on first load and after every Barba
    transition. Does nothing on other pages.
    ========================================================================= */
 
@@ -1107,12 +1107,47 @@ function renderMathJax() {
     });
   }
 
+  // ---------- Dropdowns (methodology, model size sources) ----------
+  // Same behaviour as the site's drawers: .open on the item opens its
+  // .drawer-bottom (CSS rule already on the site), the plus turns into a
+  // cross. Skips any head that has the drawer-top attribute, which the
+  // site's own drawer code already handles.
+  function initDisclosures() {
+    document.querySelectorAll('.hw-disclosure-head').forEach(function (head) {
+      if (head.dataset.hwDrawer || head.hasAttribute('drawer-top')) return;
+      var item = head.closest('.hw-disclosure');
+      if (!item) return;
+      head.dataset.hwDrawer = '1';
+      var icon = head.querySelector('.plus-icon');
+      head.setAttribute('role', 'button');
+      head.setAttribute('tabindex', '0');
+      head.setAttribute('aria-expanded', 'false');
+
+      function toggle() {
+        var open = !item.classList.contains('open');
+        item.classList.toggle('open', open);
+        head.setAttribute('aria-expanded', String(open));
+        if (icon) gsap.to(icon, { rotate: open ? 45 : 0, duration: 0.3, ease: 'power2.out' });
+        setTimeout(function () { ScrollTrigger.refresh(); }, 600);
+      }
+
+      head.addEventListener('click', toggle);
+      head.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+    });
+  }
+
   function initHardware() {
     teardown();
     if (inEditor()) return;
     initModelPoints();
     initModelScroll();
     initPerformanceLink();
+    initDisclosures();
   }
 
   initHardware();

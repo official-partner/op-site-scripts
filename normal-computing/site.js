@@ -1109,34 +1109,58 @@ function renderMathJax() {
 
   // ---------- Dropdowns (methodology, model size sources) ----------
   // Same behaviour as the site's drawers: .open on the item opens its
-  // .drawer-bottom (CSS rule already on the site), the plus turns into a
-  // cross. Skips any head that has the drawer-top attribute, which the
-  // site's own drawer code already handles.
+  // .drawer-bottom (CSS rule already on the site).
+  // - Model size sources: a text toggle, its chevron turns from right to down.
+  // - Benchmark methodology: a Btn / Main inside the head, its arrow points
+  //   down-right (Figma) and the site's ".open .arrow-btn-wrap" rule turns
+  //   it down when open. The button itself takes clicks and keyboard.
+  // Skips any head that has the drawer-top attribute, which the site's own
+  // drawer code already handles.
   function initDisclosures() {
     document.querySelectorAll('.hw-disclosure-head').forEach(function (head) {
       if (head.dataset.hwDrawer || head.hasAttribute('drawer-top')) return;
       var item = head.closest('.hw-disclosure');
       if (!item) return;
       head.dataset.hwDrawer = '1';
-      var icon = head.querySelector('.plus-icon');
-      head.setAttribute('role', 'button');
-      head.setAttribute('tabindex', '0');
-      head.setAttribute('aria-expanded', 'false');
+
+      var chevron = head.querySelector('.hw-disclosure-chevron');
+      var arrow = head.querySelector('.arrow-rotate');
+      var control = Array.prototype.find.call(head.querySelectorAll('button, a'), function (el) {
+        return el.offsetWidth > 0;
+      });
+      if (arrow) gsap.set(arrow, { rotate: 90 });
+
+      if (control) {
+        control.setAttribute('aria-expanded', 'false');
+      } else {
+        control = head;
+        head.setAttribute('role', 'button');
+        head.setAttribute('tabindex', '0');
+        head.setAttribute('aria-expanded', 'false');
+        head.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggle();
+          }
+        });
+      }
 
       function toggle() {
         var open = !item.classList.contains('open');
         item.classList.toggle('open', open);
-        head.setAttribute('aria-expanded', String(open));
-        if (icon) gsap.to(icon, { rotate: open ? 45 : 0, duration: 0.3, ease: 'power2.out' });
+        control.setAttribute('aria-expanded', String(open));
+        if (chevron) gsap.to(chevron, { rotate: open ? 90 : 0, duration: 0.3, ease: 'power2.out' });
         setTimeout(function () { ScrollTrigger.refresh(); }, 600);
       }
 
-      head.addEventListener('click', toggle);
-      head.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') {
+      head.addEventListener('click', function (e) {
+        // With a button inside, only the button opens the dropdown.
+        if (control !== head && !control.contains(e.target)) return;
+        if (e.target.closest('a[href]')) {
           e.preventDefault();
-          toggle();
+          e.stopPropagation();
         }
+        toggle();
       });
     });
   }

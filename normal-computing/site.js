@@ -1112,8 +1112,8 @@ function renderMathJax() {
   // .drawer-bottom (CSS rule already on the site).
   // - Model size sources: a text toggle, its chevron turns from right to down.
   // - Benchmark methodology: a Btn / Main inside the head, its arrow points
-  //   down-right (Figma) and the site's ".open .arrow-btn-wrap" rule turns
-  //   it down when open. The button itself takes clicks and keyboard.
+  //   down-right (Figma) and turns down when open. The button itself takes
+  //   clicks and keyboard.
   // Skips any head that has the drawer-top attribute, which the site's own
   // drawer code already handles.
   function initDisclosures() {
@@ -1128,7 +1128,12 @@ function renderMathJax() {
       var control = Array.prototype.find.call(head.querySelectorAll('button, a'), function (el) {
         return el.offsetWidth > 0;
       });
-      if (arrow) gsap.set(arrow, { rotate: 90 });
+      // The arrow turns inside its square: the square itself stays put
+      // (inline style keeps the site's ".open .arrow-btn-wrap" rotation off).
+      if (arrow) {
+        gsap.set(head.querySelector('.arrow-btn-wrap'), { rotate: 0 });
+        gsap.set(arrow, { rotate: 90 });
+      }
 
       if (control) {
         control.setAttribute('aria-expanded', 'false');
@@ -1150,6 +1155,7 @@ function renderMathJax() {
         item.classList.toggle('open', open);
         control.setAttribute('aria-expanded', String(open));
         if (chevron) gsap.to(chevron, { rotate: open ? 90 : 0, duration: 0.3, ease: 'power2.out' });
+        if (arrow) gsap.to(arrow, { rotate: open ? 135 : 90, duration: 0.3, ease: 'power2.out' });
         setTimeout(function () { ScrollTrigger.refresh(); }, 600);
       }
 

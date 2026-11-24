@@ -75,12 +75,14 @@ node --check <site>/site.min.js
 ## Webflow (paste once, in Site settings > Custom code > Footer)
 
 Must be the last script, after Barba, Lenis and Finsweet. Loads the staging file on
-`*.webflow.io` and the production file everywhere else. Replace `<site>` with the folder name.
+`*.webflow.io` and in the OP review app (which shows the webflow.io site from
+`sites.officialpartner.work`), and the production file everywhere else. Replace `<site>` with
+the folder name.
 
 ```html
 <script>
 (function () {
-  var stg = /\.webflow\.io$/.test(location.hostname);
+  var stg = /\.webflow\.io$/.test(location.hostname) || location.hostname === 'sites.officialpartner.work';
   var s = document.createElement('script');
   s.src = 'https://' + (stg ? 'staging-' : '') + 'op-site-scripts.samuel-3f4.workers.dev/<site>/site.min.js';
   s.async = false;
